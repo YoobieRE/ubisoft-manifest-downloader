@@ -100,7 +100,7 @@ async function main() {
   const downloadableGames = fullGames
     .filter((game) => game.game.latestManifest)
     .map((game) => ({
-      name: game.configuration.root.name as string,
+      name: game.configuration?.root?.name || 'unknown',
       value: game.game.productId,
     }));
 

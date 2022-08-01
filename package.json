@@ -43,7 +43,7 @@
     "inquirer": "^8.2.4",
     "nodejs-file-downloader": "^4.10.1",
     "regedit": "^5.1.1",
-    "ubisoft-demux": "^1.10690.2",
+    "ubisoft-demux": "^1.10690.3",
     "yaml": "^2.1.1"
   },
   "devDependencies": {
