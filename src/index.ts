@@ -8,8 +8,24 @@ import {
   UbiServicesApi,
   UbisoftDemux,
   game_configuration,
+  ownership_service,
 } from 'ubisoft-demux';
+import fetch from 'node-fetch';
 import { readRememberMeTicket, writeRememberMeTicket } from './cache';
+
+export interface GameSummary {
+  gameDetails: ownership_service.OwnedGame;
+  configuration: game_configuration.Configuration;
+}
+
+export interface ManifestVersion {
+  productId: number;
+  manifest: string;
+  releaseDate?: string;
+  digitalDistributionVersion?: number;
+  communitySemver?: string;
+  communityDescription?: string;
+}
 
 async function main() {
   let rememberMeTicket: string | null | undefined = await readRememberMeTicket();
@@ -90,34 +106,62 @@ async function main() {
   const ownedGames = ownershipResp.response?.initializeRsp?.ownedGames?.ownedGames;
   if (!ownedGames || !ownedGames.length) throw new Error('This account does not own any games');
 
-  const fullGames = ownedGames.map((game) => {
-    const configuration: game_configuration.Configuration = yaml.parse(game.configuration, {
+  const fullGames: GameSummary[] = ownedGames.map((gameDetails) => {
+    const configuration: game_configuration.Configuration = yaml.parse(gameDetails.configuration, {
       uniqueKeys: false,
     });
-    return { game, configuration };
+    return { gameDetails, configuration };
   });
 
   const downloadableGames = fullGames
-    .filter((game) => game.game.latestManifest)
-    .map((game) => ({
-      name: game.configuration?.root?.name || 'unknown',
-      value: game.game.productId,
+    .filter((gameSummary) => gameSummary.gameDetails.latestManifest)
+    .map((gameSummary) => ({
+      name:
+        gameSummary.configuration?.root?.name || `unknown (${gameSummary.gameDetails.productId})`,
+      value: gameSummary,
     }));
 
-  const gameResp = await inquirer.prompt({
+  const { selectedGame } = await inquirer.prompt<{ selectedGame: GameSummary }>({
     type: 'list',
-    name: 'game',
+    name: 'selectedGame',
     message: `Select which game you'd like to download`,
     choices: downloadableGames,
   });
 
-  // Use database to get list of known manifest hashes and their colloqial version number or date
+  const selectedId = selectedGame.gameDetails.productId;
 
-  const versionResp = await inquirer.prompt({
+  // Use database to get list of known manifest hashes and their colloqial version number or date
+  const versionsResp = await fetch(
+    `https://raw.githubusercontent.com/YoobieRE/manifest-versions/main/versions/${selectedId
+      .toString()
+      .padStart(5, '0')}.json`
+  );
+
+  if (!versionsResp.ok) throw new Error(`Could not get versions for game ID ${selectedId}`);
+
+  const versionsData: ManifestVersion[] = await versionsResp.json();
+
+  const versionChoices = versionsData.map((version) => {
+    const nameParts = [
+      version.releaseDate?.substring(0, 10),
+      version.communitySemver,
+      version.communityDescription,
+    ].filter((part): part is string => Boolean(part));
+    const name = `${nameParts.join(' - ')} (${version.manifest})`;
+    return {
+      name,
+      value: version,
+    };
+  });
+
+  const { version } = await inquirer.prompt<{ version: ManifestVersion }>({
     type: 'list',
     name: 'version',
     message: `Select which version you'd like to download`,
+    choices: versionChoices,
   });
+
+  console.log(version);
 
   // Download the game from that manifest
 }
