@@ -161,7 +161,50 @@ async function main() {
     choices: versionChoices,
   });
 
-  console.log(version);
+  const ownershipTokenResp = await ownershipConnection.request({
+    request: {
+      requestId: 0,
+      ownershipTokenReq: {
+        productId: version.productId,
+      },
+    },
+  });
+
+  const ownershipToken = ownershipTokenResp.response?.ownershipTokenRsp?.token;
+
+  if (!ownershipToken)
+    throw new Error(`Could not get ownership token for product ID ${version.productId}`);
+
+  const downloadConnection = await demux.openConnection('download_service');
+
+  await downloadConnection.request({
+    request: {
+      requestId: 0,
+      initializeReq: {
+        ownershipToken,
+      },
+    },
+  });
+
+  const relativePaths = [`manifests/${version.manifest}.manifest`];
+
+  const urlRequestResp = await downloadConnection.request({
+    request: {
+      requestId: 0,
+      urlReq: {
+        urlRequests: [
+          {
+            productId: version.productId,
+            relativeFilePath: relativePaths,
+          },
+        ],
+      },
+    },
+  });
+
+  console.log(urlRequestResp);
+
+  // const slicePaths = hashes.map((hash) => `slices_v3/${fileHashToPathChar(hash)}/${hash}`);
 
   // Download the game from that manifest
 }
