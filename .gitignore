@@ -1,5 +1,6 @@
 .idea
 test-output
+junk
 
 # Logs
 logs
@@ -119,9 +120,3 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
-
-test/sandbox.ts
-junk/AA5322F264ABB916CAC52C8745295098226C7C4D.manifest
-junk/AA5322F264ABB916CAC52C8745295098226C7C4D.manifest.json
-junk/AA5322F264ABB916CAC52C8745295098226C7C4D.state
-junk/trackmania-configuration.yml

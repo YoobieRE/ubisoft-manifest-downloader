@@ -60,7 +60,7 @@ export class GameInstall extends (EventEmitter as new () => TypedEmitter<GameIns
       const { location } = await inquirer.prompt<{ location: string }>({
         type: 'input',
         name: 'location',
-        message: `Where would you like to install the game?`,
+        message: `What is the game install location?`,
       });
       installLocation = location;
     }
@@ -72,7 +72,7 @@ export class GameInstall extends (EventEmitter as new () => TypedEmitter<GameIns
     }
     await Promise.all([
       fs.access(resolvedLocation, fs.constants.W_OK),
-      fs.access(resolvedLocation, fs.constants.O_DIRECTORY),
+      fs.ensureDir(resolvedLocation),
     ]);
 
     return resolvedLocation;
@@ -87,11 +87,11 @@ export class GameInstall extends (EventEmitter as new () => TypedEmitter<GameIns
     const files = manifestData.chunks.flatMap((chunk) =>
       chunk.files.map((file) => {
         let currentSliceOffset = 0;
-        const sliceInfos = file.sliceList.map((slice) => {
+        const sliceInfos = file.sliceList.map((slice, sliceIndex) => {
           const sliceInfo = {
             size: slice.size,
             sliceOffset: currentSliceOffset,
-            downloadSha1: slice.downloadSha1,
+            sliceSha1: file.slices[sliceIndex],
           };
           currentSliceOffset += slice.size;
           return sliceInfo;
@@ -104,13 +104,12 @@ export class GameInstall extends (EventEmitter as new () => TypedEmitter<GameIns
       })
     );
 
-    this.L.trace('All the files:', JSON.stringify(files));
-
     const badFiles: string[] = [];
     const goodFiles: string[] = [];
 
     const fileVerifyPromises = files.map((file) =>
       verifyFileQueue.add(async () => {
+        this.L.debug('Opening file:', file.name);
         const sliceFile = await fsPromises.open(path.join(installPath, file.name));
         // eslint-disable-next-line no-restricted-syntax
         for (const slice of file.slices) {
@@ -118,20 +117,24 @@ export class GameInstall extends (EventEmitter as new () => TypedEmitter<GameIns
           // eslint-disable-next-line no-await-in-loop
           await sliceFile.read({ buffer: sliceBuffer, position: slice.sliceOffset });
           const hashSum = crypto.createHash('sha1');
+          this.L.debug('Hashing slice:', file.name);
           hashSum.update(sliceBuffer);
-          if (Buffer.compare(slice.downloadSha1, hashSum.digest()) !== 0) {
+          if (Buffer.compare(slice.sliceSha1, hashSum.digest()) !== 0) {
             this.L.info('Bad file:', file.name);
             badFiles.push(file.name);
+            // eslint-disable-next-line no-await-in-loop
+            await sliceFile.close();
             return;
           }
         }
+        await sliceFile.close();
         goodFiles.push(file.name);
       })
     );
 
     const totalSlices = verifyFileQueue.size;
-    verifyFileQueue.on('active', () => {
-      this.emit('verifyProgress', verifyFileQueue.pending / totalSlices);
+    verifyFileQueue.on('next', () => {
+      this.emit('verifyProgress', 1 - verifyFileQueue.pending / totalSlices);
     });
     verifyFileQueue.start();
     await Promise.all(fileVerifyPromises);

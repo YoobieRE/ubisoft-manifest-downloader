@@ -1,6 +1,6 @@
 import { UbisoftDemux, UbisoftFileParser } from 'ubisoft-demux';
 import { Logger } from 'loglevel';
-import { ManifestVersion } from '.';
+import { ManifestVersion } from './versions';
 
 export interface GameDownloaderProps {
   demux: UbisoftDemux;
