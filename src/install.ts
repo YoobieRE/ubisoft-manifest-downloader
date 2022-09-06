@@ -1,4 +1,4 @@
-import { UbisoftFileParser } from 'ubisoft-demux';
+import { UbisoftFileParser, download_install_state, download } from 'ubisoft-demux';
 import { Logger } from 'loglevel';
 import inquirer from 'inquirer';
 import registry from 'native-reg';
@@ -36,13 +36,16 @@ export class GameInstall extends (EventEmitter as new () => TypedEmitter<GameIns
 
   private fileParser = new UbisoftFileParser();
 
+  private installPath?: string;
+
   constructor(props: GameInstallProps) {
     super();
     this.L = props.log;
     this.productId = props.productId;
   }
 
-  private async getInstallPath(): Promise<string> {
+  public async getInstallPath(): Promise<string> {
+    if (this.installPath) return this.installPath;
     let installLocation;
     try {
       // HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs\5595\InstallDir
@@ -75,13 +78,31 @@ export class GameInstall extends (EventEmitter as new () => TypedEmitter<GameIns
       fs.ensureDir(resolvedLocation),
     ]);
 
-    return resolvedLocation;
+    this.installPath = resolvedLocation;
+    return this.installPath;
   }
 
-  public async verify(): Promise<VerifyResult> {
+  public async getInstallState(): Promise<download_install_state.DownloadInstallState | undefined> {
+    try {
+      const installPath = await this.getInstallPath();
+      const installStateBin = await fs.readFile(path.join(installPath, STATE_FILENAME));
+      const installStateData = this.fileParser.parseDownloadInstallState(installStateBin);
+      return installStateData;
+    } catch (err) {
+      this.L.debug(err);
+      return undefined;
+    }
+  }
+
+  public async getManifest(): Promise<download.Manifest> {
     const installPath = await this.getInstallPath();
     const manifestBin = await fs.readFile(path.join(installPath, MANIFEST_FILENAME));
     const manifestData = this.fileParser.parseDownloadManifest(manifestBin);
+    return manifestData;
+  }
+
+  public async verify(): Promise<VerifyResult> {
+    const manifestData = await this.getManifest();
     const verifyFileQueue = new PQueue({ autoStart: false });
 
     const files = manifestData.chunks.flatMap((chunk) =>
@@ -107,6 +128,7 @@ export class GameInstall extends (EventEmitter as new () => TypedEmitter<GameIns
     const badFiles: string[] = [];
     const goodFiles: string[] = [];
 
+    const installPath = await this.getInstallPath();
     const fileVerifyPromises = files.map((file) =>
       verifyFileQueue.add(async () => {
         this.L.debug('Opening file:', file.name);

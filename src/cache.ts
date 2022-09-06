@@ -17,3 +17,5 @@ export async function readRememberMeTicket(): Promise<string | undefined> {
     return undefined;
   }
 }
+
+export const manifestCachePath = path.resolve(cacheLocation, 'manifests');
